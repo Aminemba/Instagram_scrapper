@@ -1,10 +1,9 @@
-import json
-import openpyxl
-import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+import json
+import pandas as pd
+import openpyxl
 from selenium_stealth import stealth
-
 
 def prepare_browser():
     chrome_options = webdriver.ChromeOptions()
@@ -24,35 +23,33 @@ def prepare_browser():
             )
     return driver
 
-
-def get_user_data(username):
-    url = f"https://www.instagram.com/{username}/?__a=1"
-    response = requests.get(url)
-    response.raise_for_status()
-    data = response.json()
-    user_data = data["graphql"]["user"]
-    return user_data
-
-
-def parse_user_data(user_data):
-    captions = []
-    for node in user_data['edge_owner_to_timeline_media']['edges']:
-        caption = node['node']['edge_media_to_caption']['edges'][0]['node']['text']
-        if caption:
-            captions.append(caption)
-    return {
-        'name': user_data['full_name'],
-        'category': user_data['category_name'],
-        'followers': user_data['edge_followed_by']['count'],
-        'posts': captions,
-    }
-
+def scrape(username):
+    url = f'https://instagram.com/{username}/?__a=1&__d=dis'
+    chrome = prepare_browser()
+    chrome.get(url)
+    if "login" in chrome.current_url:
+        print("Failed/ redir to login")
+        chrome.quit()
+        return None
+    else:
+        resp_body = chrome.find_element(By.TAG_NAME, "body").text
+        data_json = json.loads(resp_body)
+        user_data = data_json['graphql']['user']
+        chrome.quit()
+        return {
+            'name': user_data['full_name'],
+            'category': user_data['category_name'],
+            'followers': user_data['edge_followed_by']['count'],
+            'posts': [edge['node']['edge_media_to_caption']['edges'][0]['node']['text']
+                      for edge in user_data['edge_owner_to_timeline_media']['edges']
+                      if edge['node']['edge_media_to_caption']['edges']]
+        }
 
 def main():
-    username = input("Enter an Instagram username to scrape: ")
-    try:
-        user_data = get_user_data(username)
-        parsed_data = parse_user_data(user_data)
+    usernames = [input("Enter a username to scrape: ")]
+    data = []
+    for username in usernames:
+        parsed_data = scrape(username)
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Instagram Data"
@@ -64,10 +61,8 @@ def main():
             "\n".join(parsed_data['posts']),
         ])
         wb.save(f"{username}.xlsx")
-    except requests.exceptions.HTTPError as e:
-        print(f"Error getting user data: {e}")
-    except (KeyError, IndexError) as e:
-        print(f"Error parsing user data: {e}")
+
+
 
 
 if __name__ == '__main__':
