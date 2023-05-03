@@ -1,13 +1,12 @@
+from typing import Dict, List, Optional
 import json
-import openpyxl
-import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium_stealth import stealth
 
 
-def prepare_browser():
-    """Prepare headless Chrome browser instance"""
+def prepare_browser() -> webdriver.Chrome:
+    """Return a new Chrome webdriver with stealth settings."""
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("start-maximized")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -26,41 +25,30 @@ def prepare_browser():
     return driver
 
 
-def get_user_data(username):
-    """Get user data from Instagram API"""
-    url = f"https://www.instagram.com/{username}/?__a=1"
-    response = requests.get(url)
-    response.raise_for_status()
-    data = response.json()
-    user_data = data["graphql"]["user"]
-    return user_data
+def scrape(username: str) -> Optional[Dict[str, str]]:
+    """Scrape Instagram user data for a given username and return a dictionary of the scraped data."""
+    url = f'https://instagram.com/{username}/?__a=1&__d=dis'
+    chrome = prepare_browser()
+    chrome.get(url)
 
+    # Check if redirected to login page
+    if "login" in chrome.current_url:
+        print(f"Failed to scrape {username}: Redirected to login page.")
+        chrome.quit()
+        return None
 
-def parse_user_data(user_data):
-    """Parse user data and extract required information"""
-    captions = [node['node']['edge_media_to_caption']['edges'][0]['node']['text']
-                for node in user_data['edge_owner_to_timeline_media']['edges']
-                if node['node']['edge_media_to_caption']['edges'] and node['node']['edge_media_to_caption']['edges'][0]['node']['text']]
-    parsed_data = {
+    # Parse user data from JSON response
+    resp_body = chrome.find_element(By.TAG_NAME, "body").text
+    data_json = json.loads(resp_body)
+    user_data = data_json['graphql']['user']
+
+    # Return dictionary of user data
+    chrome.quit()
+    return {
         'name': user_data['full_name'],
         'category': user_data['category_name'],
         'followers': user_data['edge_followed_by']['count'],
-        'posts': captions,
+        'posts': [edge['node']['edge_media_to_caption']['edges'][0]['node']['text']
+                  for edge in user_data['edge_owner_to_timeline_media']['edges']
+                  if edge['node']['edge_media_to_caption']['edges']]
     }
-    return parsed_data
-
-
-def save_to_excel(parsed_data, username):
-    """Save scraped data to Excel file"""
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Instagram Data"
-    ws.append(["Name", "Category", "Followers", "Posts"])
-    ws.append([
-        parsed_data['name'],
-        parsed_data['category'],
-        parsed_data['followers'],
-        "\n".join(parsed_data['posts']),
-    ])
-    wb.save(f"{username}.xlsx")
-    print(f"Data for {username} saved to {username}.xlsx")
