@@ -1,22 +1,9 @@
 from typing import List
 import openpyxl
-from instascraper import scrape
+from instascraper import scrape , save_to_excel
 
 
-def save_to_excel(username: str, data: dict) -> None:
-    """Save scraped data to an Excel file with the given username."""
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Instagram Data"
-    ws.append(["Name", "Category", "Followers", "Posts"])
-    ws.append([
-        data['name'],
-        data['category'],
-        data['followers'],
-        "\n".join(data['posts']),
-    ])
-    wb.save(f"{username}.xlsx")
-    print(f"Data for {username} saved to {username}.xlsx")
+
 
 
 def main() -> None:
