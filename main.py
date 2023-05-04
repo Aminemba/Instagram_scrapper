@@ -1,7 +1,5 @@
 from typing import List
-import openpyxl
 from instascraper import scrape , save_to_excel
-
 
 
 
